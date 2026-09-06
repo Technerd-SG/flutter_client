@@ -5002,6 +5002,8 @@ class ChatViewModel extends _$ChatViewModel {
   }
 
   Future<void> _recordSlowmodeSendOnSuccess(String channelId) async {
+    // One-off snapshot; read does not retain the autoDispose family.
+    // ignore: riverpod_lint/only_use_keep_alive_inside_keep_alive
     if (await ref.read(isSlowmodeImmuneProvider(channelId).future)) {
       return;
     }
@@ -5912,12 +5914,16 @@ class ChatViewModel extends _$ChatViewModel {
     if (channelId.isEmpty) {
       return;
     }
+    // One-off snapshot; read does not retain the autoDispose family.
+    // ignore: riverpod_lint/only_use_keep_alive_inside_keep_alive
     final GuildComposerAccess? access = ref
         .read(guildComposerAccessProvider(channelId))
         .value;
     if (access != null && !access.canAccess) {
       return;
     }
+    // One-off snapshot; read does not retain the autoDispose family.
+    // ignore: riverpod_lint/only_use_keep_alive_inside_keep_alive
     final ChannelMessagePermissions? perms = ref
         .read(channelMessagePermissionsProvider(channelId))
         .value;
@@ -5932,6 +5938,8 @@ class ChatViewModel extends _$ChatViewModel {
   Future<GuildComposerAccess?> _resolveGuildComposerBlock(
     String channelId,
   ) async {
+    // One-off snapshot; read does not retain the autoDispose family.
+    // ignore: riverpod_lint/only_use_keep_alive_inside_keep_alive
     final GuildComposerAccess access = await ref.read(
       guildComposerAccessProvider(channelId).future,
     );
