@@ -20,12 +20,16 @@ class ReactionWriteBatcher {
       <String, _PendingReactionBatch>{};
   final Map<String, Future<void>> _flushing = <String, Future<void>>{};
 
+  /// [onApplied] runs after the batch has been written to the database. The
+  /// write happens up to [_window] later than the call, so a caller that
+  /// notifies listeners itself would announce a change that is not stored yet.
   void enqueue({
     required String messageId,
     required String channelId,
     required ReactionEmoji emoji,
     required bool isAdd,
     required bool isCurrentUser,
+    void Function()? onApplied,
   }) {
     final _PendingReactionBatch batch = _pending.putIfAbsent(
       messageId,
@@ -36,6 +40,7 @@ class ReactionWriteBatcher {
         }),
       ),
     );
+    batch.onApplied = onApplied ?? batch.onApplied;
     batch.deltas.add(
       _ReactionDelta(emoji: emoji, isAdd: isAdd, isCurrentUser: isCurrentUser),
     );
@@ -96,6 +101,7 @@ class ReactionWriteBatcher {
         messageId,
         jsonEncode(reactions),
       );
+      batch.onApplied?.call();
     } on Object catch (e, st) {
       talker.error('[ReactionWriteBatcher] flush failed for $messageId', e, st);
     }
@@ -107,6 +113,7 @@ class _PendingReactionBatch {
 
   final String channelId;
   final Timer timer;
+  void Function()? onApplied;
   final List<_ReactionDelta> deltas = <_ReactionDelta>[];
 }
 

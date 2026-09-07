@@ -2293,9 +2293,6 @@ class GatewayEventHandler {
       isAdd: true,
       userId: event.userId,
     );
-    _emit(
-      () => onMessageReactionChange?.call(event.channelId, event.messageId),
-    );
   }
 
   Future<void> _handleReactionRemove(MessageReactionRemoveEvent event) async {
@@ -2305,9 +2302,6 @@ class GatewayEventHandler {
       emoji: event.emoji,
       isAdd: false,
       userId: event.userId,
-    );
-    _emit(
-      () => onMessageReactionChange?.call(event.channelId, event.messageId),
     );
   }
 
@@ -2320,6 +2314,10 @@ class GatewayEventHandler {
   }) async {
     final bool isCurrentUser =
         userId != null && currentUserId != null && userId == currentUserId;
+    // Both paths notify only once the change is actually stored. The batched
+    // one is written up to kReactionWriteBatchMs later, so notifying here would
+    // make listeners re-read the message before the write lands -- leaving the
+    // UI one event behind until the next event happens to trigger a rebuild.
     if (reactionWriteBatcher != null) {
       reactionWriteBatcher!.enqueue(
         messageId: messageId,
@@ -2327,10 +2325,13 @@ class GatewayEventHandler {
         emoji: emoji,
         isAdd: isAdd,
         isCurrentUser: isCurrentUser,
+        onApplied: () =>
+            _emit(() => onMessageReactionChange?.call(channelId, messageId)),
       );
       return;
     }
     await _modifyReaction(messageId, emoji, isAdd: isAdd, userId: userId);
+    _emit(() => onMessageReactionChange?.call(channelId, messageId));
   }
 
   void _handleReactionRemoveAll(MessageReactionRemoveAllEvent event) {

@@ -4,6 +4,7 @@ import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fluxer_app/core/database/fluxer_database.dart';
 import 'package:fluxer_app/core/gateway/gateway_event_handler.dart';
+import 'package:fluxer_app/features/chat/data/reaction_write_batcher.dart';
 import 'package:fluxer_app/features/chat/domain/message.dart' as domain;
 import 'package:fluxer_app/features/profile/domain/custom_status_utils.dart';
 import 'package:fluxer_app/shared/utils/snowflake_time.dart';
@@ -101,6 +102,68 @@ void main() {
       expect(reaction, isNotNull);
       expect(reaction!.count, 1);
       expect(reaction.hasReacted, isTrue);
+    });
+  });
+
+  group('reaction change notification', () {
+    const currentUserId = '100';
+    const messageId = '500';
+    const channelId = '200';
+    const thumbsUp = ReactionEmoji(name: '👍');
+
+    // The batched write lands up to kReactionWriteBatchMs after the event.
+    // Announcing the change before then leaves listeners reading the message
+    // as it was, so the UI stays one event behind until something else
+    // triggers a rebuild.
+    test('announces a batched reaction only once it is stored', () async {
+      final database = openTestDatabase();
+      await database.messageDao.upsertMessage(
+        domain.Message(
+          id: messageId,
+          channelId: channelId,
+          authorId: '300',
+          authorName: 'author',
+          content: 'hello',
+          timestamp: DateTime.utc(2026, 1, 2),
+        ).toCompanion(),
+      );
+
+      final batcher = ReactionWriteBatcher(
+        database: database,
+        window: const Duration(milliseconds: 1),
+      );
+      addTearDown(batcher.dispose);
+
+      final List<Future<String?>> readsAtNotification = <Future<String?>>[];
+      final handler = GatewayEventHandler(
+        database: database,
+        currentUserId: currentUserId,
+        reactionWriteBatcher: batcher,
+        onMessageReactionChange: (_, String notifiedMessageId) {
+          readsAtNotification.add(
+            database.messageDao
+                .getMessage(notifiedMessageId)
+                .then((row) => row?.reactionsJson),
+          );
+        },
+      );
+
+      await handler.handle(
+        MessageReactionAddEvent(
+          channelId: channelId,
+          messageId: messageId,
+          userId: '999',
+          emoji: thumbsUp,
+        ),
+      );
+      await batcher.flush(messageId);
+
+      expect(
+        readsAtNotification,
+        hasLength(1),
+        reason: 'the change should be announced exactly once',
+      );
+      expect(await readsAtNotification.single, contains(thumbsUp.name));
     });
   });
 
